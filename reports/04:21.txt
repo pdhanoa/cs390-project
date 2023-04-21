@@ -28,3 +28,8 @@ Questions to Investigate / Task
 	
 -Chen:
 	- Make several geographic density plots with regards to the info and characteristics of different neighborhoods in Chicago
+
+
+Kaggle Dataset
+
+- Arielle: Begin model exploration and report cross-validation scores
