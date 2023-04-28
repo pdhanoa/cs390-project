@@ -1,0 +1,27 @@
+Updates
+	⁃	Parveen
+	⁃	Made extra EDA plots about metrics by regions
+	⁃	Categories are related
+	⁃	Characteristics of different variables (provide transportation)
+	⁃	Chen
+	⁃	Found and completed a dataset that details the median income, percentage youth population, access to internet/vehicle, education, park access, and density for the 77 neighborhoods
+	⁃	Arielle (Kaggle)
+	⁃	Model Building
+	⁃	Missing data value (MICE algorithm), Scale, PCA
+	⁃	AdaBoost 
+
+
+Tasks
+	⁃	Chen
+	⁃	EDA with Kaggle Dataset
+	⁃	Set up google Collab
+	⁃	Prepare My CHI My Future presentation
+	⁃	Parveen
+	⁃	Continue with EDA of My CHI My Future Data
+	⁃	Help with EDA of Kaggle Dataset
+	⁃	Help with presentation
+	⁃	Arielle
+	⁃	Prepare Kaggle presentation
+	⁃	Keep building and testing models
+	⁃	Set up google Collab
+
