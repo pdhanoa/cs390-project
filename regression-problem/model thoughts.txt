@@ -1,0 +1,3 @@
+what if we made DB-SCAN models for all values of epsilon like 0 to 1 by 0.05 on scaled data, then made a random forest of just those predicted clusters :eyes:
+
+could also run PCA on it lol
