@@ -11,13 +11,27 @@ library(shiny)
 library(ggplot2)
 library(tidyverse)
 library(dplyr)
+library(sf)
 library(ggthemes)
 library("RColorBrewer")
 
 data <- read_delim("../../data/convert_MCMF_ALL_TIME_DATA.csv")
+data <- data %>% rename("program_price" = "Program Price",
+                        "geographic_cname" = "Geographic Cluster Name")
+counties <- read_sf("../../data/comm_areas.shp")
+county_list <- unique(counties$community)
 
-data <- data %>% rename("program_price" = "Program Price")
+grouped_data <- data %>% group_by(geographic_cname)  %>% 
+  filter(program_price == "Free") %>%
+  summarise(num_free_programs=n(),
+            .groups = 'drop')
 
+merge_data <- counties %>% 
+  # return all rows for candidate Biden and all columns from x and y
+  left_join(
+    grouped_data,
+    by = c("community" ="geographic_cname")
+  )
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -26,18 +40,19 @@ ui <- fluidPage(
     titlePanel("MCMF Analysis Dashboard"),
 
     mainPanel(
-      plotOutput("distPlot")
+      plotOutput("map")
     )
 )
 
+
+
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-
-    output$distPlot <- renderPlot({
+    
+    output$map <- renderPlot({
         # generate bins based on input$bins from ui.R
-        ggplot(data, aes(x=program_price)) + geom_bar()
-
-      
+      ggplot(data=merge_data ) + 
+        geom_sf(aes(fill=num_free_programs))
     })
 }
 
