@@ -20,9 +20,15 @@ data <- data %>% rename("program_price" = "Program Price",
                         "geographic_cname" = "Geographic Cluster Name",
                         "modality" = "Meeting Type",
                         "provides_transport" = "Program Provides Transportation")
+
 data <- data %>% mutate(geographic_cname = recode(geographic_cname, 'Back of the Yards' = 'NEW CITY', 'Little Village' = 'SOUTH LAWNDALE'))
+data <- data %>% filter(`Min Age` < 25)
 counties <- read_sf("../../data/comm_areas.shp")
 county_list <- unique(counties$community)
+
+type_data <- data %>%
+  group_by(`Category Name`) %>%
+  summarise(Percent = n()/nrow(.) * 100)
 
 perc_free <- data %>%
   group_by(geographic_cname, program_price) %>%
@@ -54,6 +60,12 @@ merge_data <- counties %>%
     by = c("community" ="geographic_cname")
   )
 
+keyword_list = list('AUBURN GRESHAM', 'AUSTIN', 'BELMONT CRAGIN', 'NEW CITY', 'CHICAGO LAWN', 'GAGE PARK','ENGLEWOOD', 'WEST ENGLEWOOD',
+                    'GREATER GRAND CROSSING', 'EAST GARFIELD PARK', 'WEST GARFIELD PARK', 'PULLMAN', 'ROSELAND','WEST PULLMAN',
+                    'SOUTH LAWNDALE', 'NORTH LAWNDALE', 'HUMBOLDT PARK') 
+# merge_data$keywords <- merge_data$community %in% keyword_list
+
+merge_data$key_neighborhood <- ifelse(merge_data$community %in% keyword_list, "focus", "non-focus")
 
 
 
@@ -62,23 +74,35 @@ ui <- fluidPage(
 
     # Application title
     titlePanel("MCMF Analysis Dashboard"),
-    # selectInput("Here's some stuff", "Whoa:",
-    #             c("Cylinders" = "cyl")),
-    # mainPanel(
-    #   plotOutput("map")
-    # )
-    sidebarLayout(
-      sidebarPanel(
-        selectInput("feature_dropdown",
-                    "Please select a feature to view on the map:",
-                    choices = c("freq_free", "freq_online", "freq_transport")),
-        plotOutput("map")
-      ),
-      
-      # Show a plot of the generated distribution
-      mainPanel(
-        # plotOutput("map")
-      )
+    tabsetPanel(
+      tabPanel("panel 1",
+        sidebarLayout(
+          sidebarPanel(
+            selectInput("feature_dropdown",
+                        "Please select a feature to view on the map:",
+                        choices = c("freq_free", "freq_online", "freq_transport")),
+            checkboxInput("key_focus",
+                          label = "Check to view the focus neighborhoods",
+                          value = FALSE)
+            # plotOutput("map")
+          ),
+          
+          
+          # Show a plot of the generated distribution
+          mainPanel(
+                plotOutput("map")
+              )
+            )
+          ),
+      tabPanel("panel 2",
+            sidebarLayout(
+              sidebarPanel(),
+               mainPanel(
+               plotOutput("pie_chart")
+               )
+            )
+          ),
+      tabPanel("panel 3")
     )
 )
 
@@ -86,14 +110,28 @@ ui <- fluidPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
+  
+  
 
     fill_var <- reactive({ input$feature_dropdown })
     output$map <- renderPlot({
         # generate bins based on input$bins from ui.R
-      merge_data %>%
+      p = merge_data %>%
         ggplot(aes_string(fill=fill_var())) + 
-          geom_sf()
+          geom_sf(linewidth = 0.5)
+          
+      
+      if(input$key_focus){
+        p = p + geom_sf(fill = "gray", linewidth = 0.5, data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
+      }
+      
+      p
     })
+    
+    output$pie_chart <- renderPlot({
+      ggplot(data = type_data)
+    })
+    
 }
 
 # Run the application 
