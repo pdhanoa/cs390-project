@@ -48,7 +48,7 @@ county_list <- unique(counties$community)
 
 type_data <- data %>%
   group_by(`Category Name`) %>%
-  summarise(Percent = n()/nrow(.) * 100)
+  summarise(count = n())
 
 perc_free <- data %>%
   group_by(geographic_cname, program_price) %>%
@@ -87,6 +87,8 @@ keyword_list = list('AUBURN GRESHAM', 'AUSTIN', 'BELMONT CRAGIN', 'NEW CITY', 'C
 
 merge_data$key_neighborhood <- ifelse(merge_data$community %in% keyword_list, "focus", "non-focus")
 
+neigh_geodata$key_neighborhood <- ifelse(neigh_geodata$community %in% keyword_list, "focus", "non-focus")
+
 
 
 
@@ -99,12 +101,12 @@ ui <- dashboardPage(
     sidebarMenu(
       id = 'tabs',
       menuItem("About", tabName = "about", icon = icon("list")),
-      menuItem("Widgets", icon = icon("th"), tabName = "widgets",
-               badgeLabel = "new", badgeColor = "green")
+      menuItem("Accessibility", icon = icon("th"), tabName = "accessibility"),
+      menuItem("Types of Programs Offered", icon = icon("th"), tabName = "types")
     )),
   dashboardBody(
     tabItems(
-      tabItem("about",
+      tabItem("accessibility",
               box(plotOutput("map"), width = 6),
               box(plotOutput("companion_map"), width = 6),
               box(
@@ -117,15 +119,16 @@ ui <- dashboardPage(
                               value = FALSE), width = 4
               )
       ),
-      tabItem("widgets",
-      ),
-      tabItem("subitem1",
-
-      ),
-      tabItem("subitem2",
-              "Sub-item 2 tab content"
+      tabItem("types",
+              box(
+                selectInput("area_dropdown",
+                            "Please select a neighborhood:",
+                            choices = append(c("ALL NEIGHBORHOODS"), merge_data$community)
+                )
+              ),
+              box(plotOutput("pie_chart"), width=6)
       )
-    ),
+    )
   ),
   tags$head(
     tags$style(HTML(".logo {background-color: #21b3ed !important;}
@@ -145,37 +148,46 @@ server <- function(input, output) {
            "freq_online" = "Internet",
            "freq_transport" = "Vehicle")}
   )
+  
+  neighborhood_select <- reactive({
+    data2 <- data %>%
+      filter(if(input$area_dropdown != 'ALL NEIGHBORHOODS')  (geographic_cname == input$area_dropdown) else TRUE) %>%
+      group_by(`Category Name`) %>%
+      summarise(count = n())
+    data2 %>% filter(count %in% tail(sort(data2$count),5))
+  })
+  
   output$map <- renderPlot({
     # generate bins based on input$bins from ui.R
     p = merge_data %>%
       ggplot(aes_string(fill=fill_var())) + 
       geom_sf(linewidth = 0.5)
     
-    
     if(input$key_focus){
       p = p + geom_sf(fill = "gray", linewidth = 0.5, data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
     }
-    
     p
   })
   
   
   output$companion_map <- renderPlot({
-    # generate bins based on input$bins from ui.R
-    neigh_geodata %>%
-      ggplot(aes_string(fill=switch_var())) + 
-      geom_sf(linewidth = 0.5)
-    
-    
-    # if(input$key_focus){
-    #   p = p + geom_sf(fill = "gray", linewidth = 0.5, data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
-    # }
-    
-    # p
-  })
+     # generate bins based on input$bins from ui.R
+     p = neigh_geodata %>%
+       ggplot(aes_string(fill=switch_var())) +
+       geom_sf(linewidth = 0.5)
   
+
+     if(input$key_focus){
+       p = p + geom_sf(fill = "gray", linewidth = 0.5, data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
+     }
+
+     p
+   })
+
   output$pie_chart <- renderPlot({
-    ggplot(data = type_data)
+    ggplot(neighborhood_select(), aes(x="", y=count, fill=`Category Name`)) +
+      geom_bar(stat="identity", width=1) +
+      coord_polar("y", start=0)
   })
 }
 
