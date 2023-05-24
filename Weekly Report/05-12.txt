@@ -1,0 +1,28 @@
+Weekly Report
+
+My CHI My Future Data
+
+Goals: 
+
+1. Continue to build upon the presentation and dive into predictive analytics
+2. Pivot the dataset to include program types/data, neighborhood characteristics, and neighborhood crime rates 
+
+Task:
+
+- Team: Figure out the features that we want to select for the predictive modeling data
+- Chen: Find dataset that encapsulates the youth crime rates
+
+
+Kaggle Dataset
+
+Goal: Get RMSE below 9
+
+1. Standardized preprocessing set work with (Have already imputed using MICE)
+2. Eliminate multicollinearity and perform variable selection using PCA and Lasso
+3. Assign each family of model to a person 
+
+Chen: Support Vector Regressor
+Arielle: Trees + Boosting
+Parveen: Neural Networks
+
+Record RMSE after recording
