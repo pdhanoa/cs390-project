@@ -1,0 +1,26 @@
+My CHI My Future
+
+Tasks Progress
+
+1. Constructed a neighborhood-level dataset with respect to their program characteristics, demographic characteristics, and crime rate
+2. Ran an initial predictive model with random forest to evaluate the influence of each predictor on the target variable
+3. Started on preparing for the Shiny App for equity demonstration
+
+
+Goals this week
+
+1. Polish predictive modeling part and add to presentation
+2. Finish designing the shiny app on equity to include information on maps and dataset for presentation 
+
+
+Kaggle Dataset
+
+Tasks Progress
+
+1. Redid EDA, went much more in-depth to pull out trends before applying PCA
+2. Re-running Grid-search and other optimization
+3. Currently best RMSE is 9.6 is SVR
+
+Goals this week
+
+1. Get a RMSE under 9 by the end of the week
