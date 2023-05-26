@@ -11,18 +11,19 @@ library(shiny)
 library(shinydashboard)
 library(shiny.fluent)
 library(ggplot2)
+library(scales)
 library(tidyverse)
 library(dplyr)
 library(sf)
 library(ggthemes)
 library("RColorBrewer")
 
-data <- read_delim("../../data/convert_MCMF_ALL_TIME_DATA.csv")
+data <- read_delim("data/convert_MCMF_ALL_TIME_DATA.csv")
 data <- data %>% rename("program_price" = "Program Price",
                         "geographic_cname" = "Geographic Cluster Name",
                         "modality" = "Meeting Type",
                         "provides_transport" = "Program Provides Transportation")
-neigh_data <- read_delim(file = "../../data/neighborhoods.csv")
+neigh_data <- read_delim(file = "data/neighborhoods.csv")
 neigh_data$Name <- toupper(neigh_data$Name)
 neigh_data <- neigh_data %>% rename("median_income" = " Median_Income ")
 neigh_data$median_income <- gsub("\\$", "", 
@@ -35,7 +36,7 @@ neigh_data$Internet <- as.double(gsub("%$", "", neigh_data$Internet))
 
 neigh_data$Vehicle <- as.double(gsub("%$", "", neigh_data$Vehicle))
 
-counties <- read_sf("../../data/comm_areas.shp")
+counties <- read_sf("data/comm_areas.shp")
 
 neigh_geodata <- counties %>%
   # return all rows for candidate Biden and all columns from x and y
@@ -120,6 +121,10 @@ online_activities <- data %>% filter(data$modality == 'online') %>%
 merge_data <- merge(merge_data, age_duration, by.x = "community", by.y = "geographic_cname")
 merge_data$avg_dur <- as.double(merge_data$avg_dur)
 
+test <- data %>%
+filter(`Min Age` <= 20) %>%
+filter(`Max Age` > 50)
+
 
 
 
@@ -201,14 +206,15 @@ ui <- dashboardPage(
                   box(width =6, plotOutput("mod_map"), title = "Percentage of Households Without Internet Access",
                       solidHeader = TRUE, collapsible = TRUE),
                   box(width=6, plotOutput("mod_companion_map"), title = "Percentage of Household Without Computing Device",
-                      solidHeader = TRUE, collapsible = TRUE)
+                      solidHeader = TRUE, collapsible = TRUE),
+                  box(checkboxInput("key_focus_mod",
+                                    label = "Check to view the focus neighborhoods",
+                                    value = FALSE), width = 3)
                 ),
               fluidRow(
                 box(width=5, plotOutput("online_pie_chart")),
-                box(width=5, plotOutput("online_activities_pie_chart")),
-              box(checkboxInput("key_focus_mod",
-                              label = "Check to view the focus neighborhoods",
-                              value = FALSE), width = 3)
+                box(width=5, plotOutput("online_activities_pie_chart"))
+              
               )
             ),
       tabItem("acc",
@@ -224,8 +230,15 @@ ui <- dashboardPage(
               box(selectInput("area_dropdown",
                             "Please select a neighborhood:",
                             choices = append(c("ALL NEIGHBORHOODS"), merge_data$community)
-                )
-              ),
+                ),
+                checkboxInput("age_filter_check",
+                              label = "Check this to filter by age",
+                              value = FALSE), width = 3),
+              box(
+                sliderInput("chosen_age_slider", "Age:",
+                            min = 0, max = 30,
+                            value = 0)
+                ),
               box(plotOutput("pie_chart"), width=8)),
       tabItem("ad",
               box(plotOutput("ad_map"), title = "Average Age Range of Programs",
@@ -258,19 +271,38 @@ server <- function(input, output) {
   #          "freq_transport" = "Vehicle")}
   # )
   
+  neighborhood_initial <- reactive({
+    data %>%
+      filter( if (input$age_filter_check) (`Min Age` <= input$chosen_age_slider) else TRUE) %>%
+      filter ( if (input$age_filter_check) (`Max Age` > input$chosen_age_slider) else TRUE )
+    
+  })
+  
   neighborhood_select <- reactive({
-    data2 <- data %>%
-      filter( if (input$area_dropdown != 'ALL NEIGHBORHOODS')  (geographic_cname == input$area_dropdown) else TRUE) %>%
+    data2 <- neighborhood_initial() %>%
       group_by(`Category Name`) %>%
       summarise(count = n())
     data2 %>% filter(count %in% tail(sort(data2$count),5))
+  })
+  
+  
+  
+  chosen_neighborhood <- reactive({
+    input$area_dropdown
+  })
+  
+  chosen_age <- reactive({
+    ifelse(input$age_filter_check, paste("Age", input$chosen_age_slider), "All Ages")
+   
   })
   
   output$aff_map <- renderPlot({
     p1 = merge_data %>% 
       ggplot(aes(fill = freq_free)) + 
       geom_sf() + 
-      labs(fill = NULL)
+      labs(fill = NULL) + 
+      theme_map() +
+      scale_fill_continuous(labels = percent)
     
     if (input$key_focus_aff){
       p1 = p1 + geom_sf(fill = "gray", 
@@ -286,7 +318,8 @@ server <- function(input, output) {
     comp_p1 = merge_data %>%
       ggplot(aes(fill=median_income)) + 
       geom_sf() +
-      labs(fill = NULL)
+      labs(fill = NULL) + 
+      theme_map()
     
     if (input$key_focus_aff) {
       comp_p1 = comp_p1 + geom_sf(fill = "gray", 
@@ -300,7 +333,9 @@ server <- function(input, output) {
     p2 = merge_data %>% 
       ggplot(aes(fill = freq_transport)) + 
       geom_sf() + 
-      labs(fill = NULL)
+      labs(fill = NULL) + 
+      theme_map() + 
+      scale_fill_continuous(labels = percent)
     
     if (input$key_focus_trans) {
       p2 = p2 + geom_sf(fill = "gray", 
@@ -313,9 +348,11 @@ server <- function(input, output) {
   
   output$trans_companion_map <- renderPlot({
     comp_p2 = merge_data %>%
-      ggplot(aes(fill=Vehicle)) + 
+      ggplot(aes(fill=Vehicle/100)) + 
       geom_sf() +
-      labs(fill = NULL)
+      labs(fill = NULL) + 
+      theme_map() + 
+      scale_fill_continuous(labels = percent)
     
     if (input$key_focus_trans) {
       comp_p2 = comp_p2 + geom_sf(fill = "gray", 
@@ -327,9 +364,11 @@ server <- function(input, output) {
   
   output$mod_map <- renderPlot({
     p3 = merge_data %>% 
-      ggplot(aes(fill = Internet)) + 
+      ggplot(aes(fill = Internet/100)) + 
       geom_sf() + 
-      labs(fill = NULL)
+      labs(fill = NULL) + 
+      theme_map() + 
+      scale_fill_continuous(labels = percent)
     
     if (input$key_focus_mod) {
       p3 = p3 + geom_sf(fill = "gray", 
@@ -344,7 +383,9 @@ server <- function(input, output) {
     comp_p3 = merge_data %>%
       ggplot(aes(fill=Computing)) + 
       geom_sf() +
-      labs(fill = NULL)
+      labs(fill = NULL) + 
+      theme_map() + 
+      scale_fill_continuous(labels = percent)
     
     if (input$key_focus_mod) {
       comp_p3 = comp_p3 + geom_sf(fill = "gray", 
@@ -358,8 +399,10 @@ server <- function(input, output) {
   output$online_pie_chart <- renderPlot({
     ggplot(data = data %>% group_by(modality) %>%
              summarise(count = n()), aes(x="", y=count, fill=modality)) +
-      geom_bar(stat="identity", width=1) +
-      coord_polar("y", start=0)
+    geom_bar(stat="identity", width=1) +
+    labs(title = "Modality of Programs Across Chicago", fill = "Modality") + 
+    coord_polar("y", start=0) + 
+    theme_void()
   })
   
   
@@ -368,8 +411,8 @@ server <- function(input, output) {
   output$acc_map <- renderPlot({
     p4 = ggplot(data = merge_data, aes(fill= pro_per_youth)) + 
       geom_sf() +
-      labs(fill = NULL) +
-      scale_fill_viridis_c(option = "B", begin = 0.15)
+      scale_fill_viridis_c(option = "B", begin = 0.15) + 
+      theme_map()
     
     if (input$key_focus_acc) {
       p4 = p4 + geom_sf(fill = "gray", 
@@ -384,7 +427,9 @@ server <- function(input, output) {
     comp_p4 = ggplot(data = merge_data, aes(fill= Youth_Perc)) + 
       geom_sf() +
       labs(fill = NULL) +
-      scale_fill_viridis_c(option = "B", begin = 0.15)
+      scale_fill_viridis_c(option = "B", begin = 0.15) +
+      scale_fill_continuous(labels = percent) + 
+      theme_map()
     
     if (input$key_focus_acc) {
       comp_p4 = comp_p4 + geom_sf(fill = "gray", 
@@ -398,7 +443,8 @@ server <- function(input, output) {
     p5 = ggplot(data = merge_data, aes(fill= pro_per_youth)) + 
       geom_sf() +
       labs(fill = NULL) +
-      scale_fill_viridis_c(option = "B", begin = 0.15)
+      scale_fill_viridis_c(option = "B", begin = 0.15) + 
+      theme_map()
     
     if (input$key_focus_acc) {
       p5 = p5 + geom_sf(fill = "gray", 
@@ -408,32 +454,21 @@ server <- function(input, output) {
     p5
   })
   
-  
-  output$acc_companion_map <- renderPlot({
-    comp_p5 = ggplot(data = merge_data, aes(fill= Youth_Perc)) + 
-      geom_sf() +
-      labs(fill = NULL) +
-      scale_fill_viridis_c(option = "B", begin = 0.15)
-    
-    if (input$key_focus_acc) {
-      comp_p5 = comp_p5 + geom_sf(fill = "gray", 
-                                  data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
-    }
-    
-    comp_p5
-  })
-  
   output$pie_chart <- renderPlot({
     ggplot(neighborhood_select(), aes(x="", y=count, fill=`Category Name`)) +
       geom_bar(stat="identity", width=1) +
-      coord_polar("y", start=0)
+      coord_polar("y", start=0)  +
+      labs(title = paste("Top Types of Programs In ", chosen_neighborhood(), "for", chosen_age()), fill = "Program Type") + 
+      theme_void()
   })
   
   
   output$online_activities_pie_chart <- renderPlot({
     ggplot(data =  online_activities %>% filter(count %in% tail(sort(online_activities$count),5)), aes(x="", y=count, fill=`Category Name`)) +
       geom_bar(stat="identity", width=1) +
-      coord_polar("y", start=0)
+      coord_polar("y", start=0) + 
+      labs(title="Types of Online Programs Across Chicago") + 
+      theme_void()
   })
   
   
