@@ -9,6 +9,7 @@
 
 library(shiny)
 library(shinydashboard)
+library(shiny.fluent)
 library(ggplot2)
 library(tidyverse)
 library(dplyr)
@@ -34,6 +35,8 @@ neigh_data$Internet <- as.double(gsub("%$", "", neigh_data$Internet))
 
 neigh_data$Vehicle <- as.double(gsub("%$", "", neigh_data$Vehicle))
 
+counties <- read_sf("../../data/comm_areas.shp")
+
 neigh_geodata <- counties %>%
   # return all rows for candidate Biden and all columns from x and y
   left_join(
@@ -43,12 +46,11 @@ neigh_geodata <- counties %>%
 
 data <- data %>% mutate(geographic_cname = recode(geographic_cname, 'Back of the Yards' = 'NEW CITY', 'Little Village' = 'SOUTH LAWNDALE'))
 data <- data %>% filter(`Min Age` < 25)
-counties <- read_sf("../../data/comm_areas.shp")
 county_list <- unique(counties$community)
 
 type_data <- data %>%
   group_by(`Category Name`) %>%
-  summarise(count = n())
+  summarise(Percent = n()/nrow(.) * 100)
 
 perc_free <- data %>%
   group_by(geographic_cname, program_price) %>%
@@ -86,50 +88,157 @@ keyword_list = list('AUBURN GRESHAM', 'AUSTIN', 'BELMONT CRAGIN', 'NEW CITY', 'C
 # merge_data$keywords <- merge_data$community %in% keyword_list
 
 merge_data$key_neighborhood <- ifelse(merge_data$community %in% keyword_list, "focus", "non-focus")
+neigh_geodata$key_neighborhood <- ifelse(merge_data$community %in% keyword_list, "focus", "non-focus")
 
-neigh_geodata$key_neighborhood <- ifelse(neigh_geodata$community %in% keyword_list, "focus", "non-focus")
+merge_data <- merge(merge_data, neigh_data, by.x = "community", by.y = "Name")
 
+programs_per_youth <- data %>% 
+  group_by(geographic_cname) %>%
+  summarise(num = n())
+
+merge_data <- merge(merge_data, programs_per_youth, by.x = "community", by.y = "geographic_cname")
+
+colnames(merge_data)[14] <- "num_programs"
+
+merge_data$pro_per_youth <- merge_data$num_programs / merge_data$Youth
+
+merge_data$Youth_Perc <- as.double(sapply(str_split(merge_data$Youth_Perc, "%"), function(x) x[[1]])) / 100
+merge_data$Computing <- as.double(sapply(str_split(merge_data$Computing, "%"), function(x) x[[1]])) / 100
+
+data$Age_Range <- data$`Max Age` - data$`Min Age`
+data$Duration <- as.Date(data$`End Date`, format = "%m/%d/%y") - as.Date(data$`Start Date`, format = "%m/%d/%y")
+
+age_duration <- data %>% 
+  group_by(geographic_cname) %>%
+  summarise(avg_age = mean(Age_Range),
+            avg_dur = mean(Duration))
+
+online_activities <- data %>% filter(data$modality == 'online') %>%
+  group_by(`Category Name`) %>%
+  summarise(count = n())
+
+merge_data <- merge(merge_data, age_duration, by.x = "community", by.y = "geographic_cname")
+merge_data$avg_dur <- as.double(merge_data$avg_dur)
 
 
 
 
 # Define UI for application that draws a histogram
 ui <- dashboardPage(
-  skin = c("blue"),
+  ## skin = c("blue"),
   dashboardHeader(title = "My CHI. My Future"),
   dashboardSidebar(
     sidebarMenu(
       id = 'tabs',
-      menuItem("About", tabName = "about", icon = icon("list")),
-      menuItem("Accessibility", icon = icon("th"), tabName = "accessibility"),
-      menuItem("Types of Programs Offered", icon = icon("th"), tabName = "types")
+      menuItem("About", icon = icon("list"), tabName = "about"),
+      menuItem("Affordability", icon = icon("money-bill"), tabName = "aff"),
+      menuItem("Transportability", icon = icon("car"), tabName = "trans"),
+      menuItem("Modality", icon = icon("wifi"), tabName = "mod"),
+      menuItem("Accessibility", icon = icon("universal-access"), tabName = "acc"),
+      menuItem("Diversity of Programs", icon = icon("handshake"), tabName = "dp"),
+      menuItem('Age Range & Duration', icon = icon("business-time"), tabName = "ad")
     )),
   dashboardBody(
     tabItems(
-      tabItem("accessibility",
-              box(plotOutput("map"), width = 6),
-              box(plotOutput("companion_map"), width = 6),
-              box(
-                selectInput("feature_dropdown",
-                            "Please select a feature to view on the map:",
-                            choices = c("freq_free", "freq_online", "freq_transport"),
-                            selected = "freq_free"),
-                checkboxInput("key_focus",
-                              label = "Check to view the focus neighborhoods",
-                              value = FALSE), width = 4
+      tabItem("about",
+              fluidRow(
+                  mainPanel(
+                    box(title = "The Neighborhoods in Focus",
+                        tags$img(src = "focus_neighborhoods.png",
+                                 width = "100%", height = "auto"),
+                        solidHeader = TRUE, status = "primary", collapsible = TRUE, width = 6
+                        ),
+                    box(title = "Our Approach to Assess Equity",
+                        solidHeader = TRUE, collapsible = TRUE, status = "warning", width = 6,
+                        list(
+                          tags$ul(
+                            tags$li("First, we broke down ", tags$b("equity"), "into 5 areas"),
+                            tags$ul(
+                              tags$li("Affordability"),
+                              tags$li('Transportability'),
+                              tags$li('Modality'),
+                              tags$li('Accessibility'),
+                              tags$li('Program Types')
+                            ),
+                            tags$li("Then, we found proxy metrics from the dataset for these respective areas across the 77 neighborhoods of Chicago"),
+                            tags$ul(
+                              tags$li("Percentage of", tags$b("Free Programs"), "and Median", tags$b("Household Income")),
+                              tags$li("Percentage of Programs that Offer", tags$b("Transportation"),"and Percentage of Households", tags$b("without Vehicle")),
+                              tags$li("Percentage of Households without", tags$b("Internet or Computing Device")),
+                              tags$li(tags$b("Programs per Youth and Youth Density")),
+                              tags$li(tags$b("Diversity"), "of Programs", tags$b("Age Range & Duration"))
+                            ),
+                            tags$li("Lastly, we effectively visualized these characteristics across different neighborhoods (especially those in focus) to capture", tags$b("discrepancies and inequities"), "across Chicago"),
+                          )
+                        )
+                        ),
+                    box(title = "Our Data",
+                        solidHeader = TRUE, collapsible = TRUE, status = "success",
+                        tags$a(href = "https://data.cityofchicago.org/Events/My-CHI-My-Future-Programs/w22p-bfyb/data", "MCMF (My CHI. My Future) Dataset"), br(),
+                        tags$a(href = "https://www.cmap.illinois.gov/documents/10180/126764/_Combined_AllCCAs.pdf/", "CMAP (Chicago Metropolitan Agency for Planning) Dataset")
+                    )
+                )
               )
-      ),
-      tabItem("types",
+            ),
+      tabItem("aff",
+              box(plotOutput("aff_map"), title = "Percentage of Free Programs",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
+              box(plotOutput("aff_companion_map"), title = "Median Household Income",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
+              box(checkboxInput("key_focus_aff",
+                              label = "Check to view the focus neighborhoods",
+                              value = FALSE), width = 3)),
+      tabItem("trans",
+              box(plotOutput("trans_map"), title = "Percentage of Programs that Provide Transporation",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
+              box(plotOutput("trans_companion_map"), title = "Percentage of Household Without Vehicle",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
+              box(checkboxInput("key_focus_trans",
+                              label = "Check to view the focus neighborhoods",
+                              value = FALSE), width = 3)),
+      tabItem("mod",
+                fluidRow(
+                  box(width =6, plotOutput("mod_map"), title = "Percentage of Households Without Internet Access",
+                      solidHeader = TRUE, collapsible = TRUE),
+                  box(width=6, plotOutput("mod_companion_map"), title = "Percentage of Household Without Computing Device",
+                      solidHeader = TRUE, collapsible = TRUE)
+                ),
+              fluidRow(
+                box(width=5, plotOutput("online_pie_chart")),
+                box(width=5, plotOutput("online_activities_pie_chart")),
+              box(checkboxInput("key_focus_mod",
+                              label = "Check to view the focus neighborhoods",
+                              value = FALSE), width = 3)
+              )
+            ),
+      tabItem("acc",
+              box(plotOutput("acc_map"), title = "Programs Per Youth",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
+              box(plotOutput("acc_companion_map"), title = "Percentage of Youth",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
               box(
-                selectInput("area_dropdown",
+                checkboxInput("key_focus_acc",
+                              label = "Check to view the focus neighborhoods",
+                              value = FALSE), width = 3)),
+      tabItem("dp",
+              box(selectInput("area_dropdown",
                             "Please select a neighborhood:",
                             choices = append(c("ALL NEIGHBORHOODS"), merge_data$community)
                 )
               ),
-              box(plotOutput("pie_chart"), width=6)
+              box(plotOutput("pie_chart"), width=8)),
+      tabItem("ad",
+              box(plotOutput("ad_map"), title = "Average Age Range of Programs",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
+              box(plotOutput("ad_companion_map"), title = "Average Duration of Programs",
+                  width = 6, solidHeader = TRUE, collapsible = TRUE),
+              box(
+                checkboxInput("key_focus_ad",
+                              label = "Check to view the focus neighborhoods",
+                              value = FALSE), width = 3, height = "50px")
+              )
       )
-    )
-  ),
+    ),
   tags$head(
     tags$style(HTML(".logo {background-color: #21b3ed !important;}
                       .navbar {background-color: #21b3ed !important;}
@@ -141,54 +250,219 @@ ui <- dashboardPage(
 
 # Define server logic required to draw a histogram
 server <- function(input, output) {
-  fill_var <- reactive({ input$feature_dropdown })
-  switch_var <- reactive({
-    switch(input$feature_dropdown, 
-           "freq_free" = "median_income",
-           "freq_online" = "Internet",
-           "freq_transport" = "Vehicle")}
-  )
+  # fill_var <- reactive({ input$feature_dropdown })
+  # switch_var <- reactive({
+  #   switch(input$feature_dropdown, 
+  #          "freq_free" = "median_income",
+  #          "freq_online" = "Internet",
+  #          "freq_transport" = "Vehicle")}
+  # )
   
   neighborhood_select <- reactive({
     data2 <- data %>%
-      filter(if(input$area_dropdown != 'ALL NEIGHBORHOODS')  (geographic_cname == input$area_dropdown) else TRUE) %>%
+      filter( if (input$area_dropdown != 'ALL NEIGHBORHOODS')  (geographic_cname == input$area_dropdown) else TRUE) %>%
       group_by(`Category Name`) %>%
       summarise(count = n())
     data2 %>% filter(count %in% tail(sort(data2$count),5))
   })
   
-  output$map <- renderPlot({
-    # generate bins based on input$bins from ui.R
-    p = merge_data %>%
-      ggplot(aes_string(fill=fill_var())) + 
-      geom_sf(linewidth = 0.5)
+  output$aff_map <- renderPlot({
+    p1 = merge_data %>% 
+      ggplot(aes(fill = freq_free)) + 
+      geom_sf() + 
+      labs(fill = NULL)
     
-    if(input$key_focus){
-      p = p + geom_sf(fill = "gray", linewidth = 0.5, data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
+    if (input$key_focus_aff){
+      p1 = p1 + geom_sf(fill = "gray", 
+                                data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
     }
-    p
+    
+    p1
   })
   
   
-  output$companion_map <- renderPlot({
-     # generate bins based on input$bins from ui.R
-     p = neigh_geodata %>%
-       ggplot(aes_string(fill=switch_var())) +
-       geom_sf(linewidth = 0.5)
+  output$aff_companion_map <- renderPlot({
+    # generate bins based on input$bins from ui.R
+    comp_p1 = merge_data %>%
+      ggplot(aes(fill=median_income)) + 
+      geom_sf() +
+      labs(fill = NULL)
+    
+    if (input$key_focus_aff) {
+      comp_p1 = comp_p1 + geom_sf(fill = "gray", 
+                                  data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
+    }
+
+    comp_p1
+  })
   
+  output$trans_map <- renderPlot({
+    p2 = merge_data %>% 
+      ggplot(aes(fill = freq_transport)) + 
+      geom_sf() + 
+      labs(fill = NULL)
+    
+    if (input$key_focus_trans) {
+      p2 = p2 + geom_sf(fill = "gray", 
+                                data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
+    }
+    
+    p2
+  })
+  
+  
+  output$trans_companion_map <- renderPlot({
+    comp_p2 = merge_data %>%
+      ggplot(aes(fill=Vehicle)) + 
+      geom_sf() +
+      labs(fill = NULL)
+    
+    if (input$key_focus_trans) {
+      comp_p2 = comp_p2 + geom_sf(fill = "gray", 
+                                  data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
+    }
+    
+    comp_p2
+  })
+  
+  output$mod_map <- renderPlot({
+    p3 = merge_data %>% 
+      ggplot(aes(fill = Internet)) + 
+      geom_sf() + 
+      labs(fill = NULL)
+    
+    if (input$key_focus_mod) {
+      p3 = p3 + geom_sf(fill = "gray", 
+                        data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
+    }
+    
+    p3
+  })
+  
+  
+  output$mod_companion_map <- renderPlot({
+    comp_p3 = merge_data %>%
+      ggplot(aes(fill=Computing)) + 
+      geom_sf() +
+      labs(fill = NULL)
+    
+    if (input$key_focus_mod) {
+      comp_p3 = comp_p3 + geom_sf(fill = "gray", 
+                                  data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
+    }
+    
+    comp_p3
+  })
 
-     if(input$key_focus){
-       p = p + geom_sf(fill = "gray", linewidth = 0.5, data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
-     }
 
-     p
-   })
-
+  output$online_pie_chart <- renderPlot({
+    ggplot(data = data %>% group_by(modality) %>%
+             summarise(count = n()), aes(x="", y=count, fill=modality)) +
+      geom_bar(stat="identity", width=1) +
+      coord_polar("y", start=0)
+  })
+  
+  
+  
+  
+  output$acc_map <- renderPlot({
+    p4 = ggplot(data = merge_data, aes(fill= pro_per_youth)) + 
+      geom_sf() +
+      labs(fill = NULL) +
+      scale_fill_viridis_c(option = "B", begin = 0.15)
+    
+    if (input$key_focus_acc) {
+      p4 = p4 + geom_sf(fill = "gray", 
+                        data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
+    }
+    
+    p4
+  })
+  
+  
+  output$acc_companion_map <- renderPlot({
+    comp_p4 = ggplot(data = merge_data, aes(fill= Youth_Perc)) + 
+      geom_sf() +
+      labs(fill = NULL) +
+      scale_fill_viridis_c(option = "B", begin = 0.15)
+    
+    if (input$key_focus_acc) {
+      comp_p4 = comp_p4 + geom_sf(fill = "gray", 
+                                  data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
+    }
+    
+    comp_p4
+  })
+  
+  output$acc_map <- renderPlot({
+    p5 = ggplot(data = merge_data, aes(fill= pro_per_youth)) + 
+      geom_sf() +
+      labs(fill = NULL) +
+      scale_fill_viridis_c(option = "B", begin = 0.15)
+    
+    if (input$key_focus_acc) {
+      p5 = p5 + geom_sf(fill = "gray", 
+                        data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
+    }
+    
+    p5
+  })
+  
+  
+  output$acc_companion_map <- renderPlot({
+    comp_p5 = ggplot(data = merge_data, aes(fill= Youth_Perc)) + 
+      geom_sf() +
+      labs(fill = NULL) +
+      scale_fill_viridis_c(option = "B", begin = 0.15)
+    
+    if (input$key_focus_acc) {
+      comp_p5 = comp_p5 + geom_sf(fill = "gray", 
+                                  data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
+    }
+    
+    comp_p5
+  })
+  
   output$pie_chart <- renderPlot({
     ggplot(neighborhood_select(), aes(x="", y=count, fill=`Category Name`)) +
       geom_bar(stat="identity", width=1) +
       coord_polar("y", start=0)
   })
+  
+  
+  output$online_activities_pie_chart <- renderPlot({
+    ggplot(data =  online_activities %>% filter(count %in% tail(sort(online_activities$count),5)), aes(x="", y=count, fill=`Category Name`)) +
+      geom_bar(stat="identity", width=1) +
+      coord_polar("y", start=0)
+  })
+  
+  
+  output$ad_map <- renderPlot({
+    p6 = ggplot(data = merge_data, aes(fill = avg_age)) + 
+      geom_sf() +
+      scale_fill_viridis_c(option = "B", begin = 0.15)
+    
+    if (input$key_focus_ad) {
+      p6 = p6 + geom_sf(fill = "gray", 
+                        data = merge_data %>% filter(merge_data$key_neighborhood == "non-focus"))
+    }
+
+    p6
+  })
+  
+  
+  output$ad_companion_map <- renderPlot({
+    comp_p6 = ggplot(data = merge_data, aes(fill = avg_dur)) + 
+      geom_sf() +
+      scale_fill_viridis_c(option = "B", begin = 0.15)
+    
+    if (input$key_focus_ad){
+      comp_p6 = comp_p6 + geom_sf(fill = "gray", 
+                                  data = neigh_geodata %>% filter(neigh_geodata$key_neighborhood == "non-focus"))
+    }
+    comp_p6
+  })
+  
 }
 
 # Run the application 
