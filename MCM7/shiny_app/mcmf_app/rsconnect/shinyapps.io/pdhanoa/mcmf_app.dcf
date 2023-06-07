@@ -1,0 +1,13 @@
+name: mcmf_app
+title: mcmf_app
+username:
+account: pdhanoa
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9191223
+bundleId: 7265988
+url: https://pdhanoa.shinyapps.io/mcmf_app/
+when: 1685083384.80642
+lastSyncTime: 1685083384.80643
+asMultiple: FALSE
+asStatic: FALSE
